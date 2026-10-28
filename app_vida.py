@@ -70,14 +70,26 @@ def procesar_dni_cuil(valor):
     texto = str(valor).strip()
     if texto.lower() == 'nan' or not texto: return ""
     
+    # 1. Limpiamos todos los caracteres que no sean números (guiones, puntos, letras)
+    numeros = re.sub(r'[^0-9]', '', texto)
+    
+    # 2. Si tiene 11 números exactos y arranca con un prefijo de CUIL (20, 23, 24, 27, 30, 33)
+    if len(numeros) == 11 and numeros[:2] in ['20', '23', '24', '27', '30', '33']:
+        return numeros[2:10]
+        
+    # 3. Si tiene 10 números y arranca con prefijo (Ej: se olvidó el dígito verificador del final)
+    elif len(numeros) == 10 and numeros[:2] in ['20', '23', '24', '27', '30', '33']:
+        return numeros[2:]
+        
+    # 4. Si el usuario mandó "DNI-Digito" ej: 29452749-5 (un solo guion pero el DNI primero)
     if '-' in texto:
         partes = texto.split('-')
-        if len(partes) >= 3:
-            texto = "".join(partes[1:-1])
-        elif len(partes) == 2:
-            texto = partes[0]
+        if len(partes) == 2 and len(partes[0]) >= 7:
+            # Tomamos la primera parte
+            return re.sub(r'[^0-9]', '', partes[0])
             
-    return re.sub(r'[^0-9]', '', texto)
+    # 5. En cualquier otro caso (ej: si mandó un DNI limpio), devolvemos los números.
+    return numeros
 
 def pintar_duplicados(s):
     dups = s.duplicated(keep=False) & (s != '')
