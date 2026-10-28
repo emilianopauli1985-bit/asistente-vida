@@ -36,13 +36,21 @@ LISTAS_DESPLEGABLES = {
 # =========================================================
 def inyectar_listas_desplegables(writer, df_export, workbook, sheet_name):
     worksheet_main = writer.sheets[sheet_name]
-    worksheet_dv = workbook.add_worksheet('DataValidation')
     
+    # Verificamos si la hoja oculta DataValidation ya existe (útil para archivos Multi-Hoja)
+    worksheet_dv = workbook.get_worksheet_by_name('DataValidation')
+    
+    if worksheet_dv is None:
+        worksheet_dv = workbook.add_worksheet('DataValidation')
+        col_idx = 0
+        for col_name, valores in LISTAS_DESPLEGABLES.items():
+            worksheet_dv.write(0, col_idx, col_name)
+            worksheet_dv.write_column(1, col_idx, valores)
+            col_idx += 1
+        worksheet_dv.hide()
+        
     col_idx = 0
     for col_name, valores in LISTAS_DESPLEGABLES.items():
-        worksheet_dv.write(0, col_idx, col_name)
-        worksheet_dv.write_column(1, col_idx, valores)
-        
         if col_name in df_export.columns:
             main_col_idx = list(df_export.columns).index(col_name)
             
@@ -59,8 +67,6 @@ def inyectar_listas_desplegables(writer, df_export, workbook, sheet_name):
             })
             
         col_idx += 1
-        
-    worksheet_dv.hide()
 
 # =========================================================
 # FUNCIONES DE LIMPIEZA Y PINTADO (ESTILOS)
@@ -85,7 +91,6 @@ def procesar_dni_cuil(valor):
     if '-' in texto:
         partes = texto.split('-')
         if len(partes) == 2 and len(partes[0]) >= 7:
-            # Tomamos la primera parte
             return re.sub(r'[^0-9]', '', partes[0])
             
     # 5. En cualquier otro caso (ej: si mandó un DNI limpio), devolvemos los números.
@@ -145,7 +150,7 @@ st.markdown('<h1 style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.6);"
 st.markdown('<p style="color: white; font-size: 18px; text-shadow: 1px 1px 4px rgba(0,0,0,0.6); margin-bottom: 30px;">Seleccioná la herramienta que necesites usar hoy.</p>', unsafe_allow_html=True)
 
 tab_armador, tab_validador, tab_unificador, tab_pdf = st.tabs([
-    "🪄 Armar Excel", "✅ Validar Carga", "🔗 Unificar Excels", "📄 PDF a Excel / Word"
+    "🪄 Armar Excel", "✅ Validar Carga", "📑 Procesar Multi-Hoja", "📄 PDF a Excel / Word"
 ])
 
 # ==========================================
@@ -327,8 +332,12 @@ with tab_validador:
 
     if archivo_agente is not None:
         try:
-            df = pd.read_excel(archivo_agente, sheet_name="VIDA - Personas x Grupo")
-            st.info("Procesando validaciones y corrigiendo formatos...")
+            # Aquí leemos solo la primera hoja que contenga los datos para la validación tradicional
+            hojas = pd.ExcelFile(archivo_agente).sheet_names
+            hoja_a_leer = hojas[0] if "DataValidation" not in hojas[0] else hojas[1]
+            
+            df = pd.read_excel(archivo_agente, sheet_name=hoja_a_leer)
+            st.info(f"Procesando validaciones de la hoja '{hoja_a_leer}'...")
 
             hoy = pd.Timestamp.today()
             total_fechas_mal_formato = 0
@@ -482,15 +491,15 @@ with tab_validador:
             
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter', datetime_format='dd/mm/yyyy', date_format='dd/mm/yyyy') as writer:
-                df.to_excel(writer, index=False, sheet_name="VIDA - Personas x Grupo")
+                df.to_excel(writer, index=False, sheet_name=hoja_a_leer)
                 workbook = writer.book
-                worksheet = writer.sheets['VIDA - Personas x Grupo']
                 
-                inyectar_listas_desplegables(writer, df, workbook, "VIDA - Personas x Grupo")
+                inyectar_listas_desplegables(writer, df, workbook, hoja_a_leer)
                 
                 formato_rojo = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
                 formato_verde = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
                 formato_amarillo = workbook.add_format({'bg_color': '#FFF2CC', 'font_color': '#9C6500'})
+                worksheet = writer.sheets[hoja_a_leer]
                 
                 worksheet.conditional_format('A2:A5000', {'type': 'text', 'criteria': 'containing', 'value': 'ERROR', 'format': formato_rojo})
                 worksheet.conditional_format('A2:A5000', {'type': 'text', 'criteria': 'containing', 'value': 'OK', 'format': formato_verde})
@@ -518,12 +527,12 @@ with tab_validador:
             st.error(f"Error al leer el archivo. Detalle técnico: {e}")
 
 # ==========================================
-# PESTAÑA 3: UNIFICADOR DE EXCELS Y HOJAS
+# PESTAÑA 3: PROCESADOR MULTI-HOJA
 # ==========================================
 with tab_unificador:
-    st.markdown('<div style="background-color: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #262730 !important;">Subí varios archivos Excel a la vez, <b>o un solo archivo que tenga varias hojas (pestañas)</b>. Vas a poder configurar cada hoja por separado y el sistema unificará todo en una sola Plantilla Oficial.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="background-color: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #262730 !important;">Subí un archivo Excel con varias hojas (o varios archivos). Podés configurar cada hoja por separado y el sistema generará un <b>único Excel de salida respetando las hojas separadas</b>, aplicando los controles de armado, fechas de nacimiento y eliminando duplicados <b>solo dentro de cada hoja</b>.</div>', unsafe_allow_html=True)
     
-    archivos_multiples = st.file_uploader("Subí los archivos que quieras fusionar", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key=f"uploader_unif_{st.session_state.reset_unificador}")
+    archivos_multiples = st.file_uploader("Subí los archivos que quieras procesar", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key=f"uploader_unif_{st.session_state.reset_unificador}")
     
     if archivos_multiples:
         configs = []
@@ -544,7 +553,7 @@ with tab_unificador:
             
             for hoja in hojas:
                 with st.expander(f"📁 {archivo.name} - Hoja: {hoja}", expanded=True):
-                    incluir_hoja = st.checkbox(f"Procesar y unir esta hoja", value=True, key=f"check_{idx_global}")
+                    incluir_hoja = st.checkbox(f"Procesar esta hoja", value=True, key=f"check_{idx_global}")
                     
                     if incluir_hoja:
                         col_f_1, col_f_2 = st.columns([2, 3])
@@ -592,11 +601,11 @@ with tab_unificador:
 
         if configs:
             st.markdown("---")
-            if st.button("🔗 Consolidar Hojas y Generar Plantilla Oficial", use_container_width=True):
-                lista_dfs_limpios = []
+            if st.button("📑 Procesar Hojas y Generar Plantilla", use_container_width=True):
+                hojas_procesadas = []
                 tiene_id = any(cfg['col_id_persona'] != "No incluir" for cfg in configs)
                 
-                with st.spinner("Procesando y unificando datos..."):
+                with st.spinner("Procesando hojas..."):
                     for cfg in configs:
                         cfg['archivo'].seek(0)
                         filas_a_saltar = int(cfg['fila_titulos']) - 1
@@ -678,59 +687,72 @@ with tab_unificador:
                         df_oficial['*Tipo Id.'] = 'D.N.I.'
                         df_oficial['Nro. de grupo'] = '1-Titular'
                         
-                        lista_dfs_limpios.append(df_oficial)
-                
-                df_consolidado = pd.concat(lista_dfs_limpios, ignore_index=True)
-                
-                dnis_con_datos = df_consolidado[df_consolidado['*Nro. Id.'] != '']
-                cantidad_duplicados = dnis_con_datos.duplicated(subset=['*Nro. Id.', '*Apellido', '*Nombre'], keep='first').sum()
+                        # --- LIMPIEZA DE DUPLICADOS EXACTOS (SOLO DENTRO DE LA HOJA) ---
+                        dnis_con_datos = df_oficial[df_oficial['*Nro. Id.'] != '']
+                        cantidad_duplicados = dnis_con_datos.duplicated(subset=['*Nro. Id.', '*Apellido', '*Nombre'], keep='first').sum()
 
-                if cantidad_duplicados > 0:
-                    m_vacios = df_consolidado['*Nro. Id.'] == ''
-                    m_duplicados = df_consolidado.duplicated(subset=['*Nro. Id.', '*Apellido', '*Nombre'], keep='first')
-                    df_consolidado = df_consolidado[m_vacios | (~m_duplicados)]
-                    df_consolidado.reset_index(drop=True, inplace=True)
-                    st.success(f"🪄 **Limpieza Automática Global:** Se eliminaron {cantidad_duplicados} registros idénticos encontrados entre las distintas hojas.")
-                else:
-                    st.success("✅ Hojas fusionadas exitosamente.")
-                    
-                dnis_con_datos_final = df_consolidado[df_consolidado['*Nro. Id.'] != '']
-                cant_dup_parciales = dnis_con_datos_final.duplicated(subset=['*Nro. Id.'], keep=False).sum()
+                        if cantidad_duplicados > 0:
+                            m_vacios = df_oficial['*Nro. Id.'] == ''
+                            m_duplicados = df_oficial.duplicated(subset=['*Nro. Id.', '*Apellido', '*Nombre'], keep='first')
+                            df_oficial = df_oficial[m_vacios | (~m_duplicados)]
+                            df_oficial.reset_index(drop=True, inplace=True)
+                            
+                        hojas_procesadas.append({
+                            'nombre_hoja': cfg['hoja'],
+                            'df': df_oficial,
+                            'duplicados_eliminados': cantidad_duplicados
+                        })
 
-                if cant_dup_parciales > 0:
-                    st.warning(f"⚠️ **¡Alerta de revisión!** Quedaron {cant_dup_parciales} registros con el mismo DNI pero distintos nombres entre las hojas. Se pintaron de amarillo para que los analices.")
+                st.success("✅ ¡Proceso completado! Se generó el Excel conservando las hojas separadas y eliminando duplicados internos.")
                 
+                # Resumen visual por hoja
                 st.markdown('<div style="background-color: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px; color: #262730 !important;">', unsafe_allow_html=True)
-                st.write("**Vista Previa del Archivo Unificado:**")
-                st.dataframe(df_consolidado.style.apply(pintar_duplicados, subset=['*Nro. Id.']))
+                for item in hojas_procesadas:
+                    st.write(f"**Hoja: {item['nombre_hoja']}**")
+                    if item['duplicados_eliminados'] > 0:
+                        st.info(f"🪄 Se eliminaron {item['duplicados_eliminados']} registros idénticos dentro de esta hoja.")
+                    st.dataframe(item['df'].head(5)) # Vista previa cortita para no saturar
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                buffer_unif = io.BytesIO()
-                with pd.ExcelWriter(buffer_unif, engine='xlsxwriter', datetime_format='dd/mm/yyyy', date_format='dd/mm/yyyy') as writer:
-                    df_consolidado.to_excel(writer, index=False, sheet_name="VIDA - Personas x Grupo")
+                # Generación del archivo Multi-Hoja
+                buffer_multi = io.BytesIO()
+                with pd.ExcelWriter(buffer_multi, engine='xlsxwriter', datetime_format='dd/mm/yyyy', date_format='dd/mm/yyyy') as writer:
                     workbook = writer.book
-                    worksheet = writer.sheets['VIDA - Personas x Grupo']
-                    inyectar_listas_desplegables(writer, df_consolidado, workbook, "VIDA - Personas x Grupo")
                     
-                    idx_dni = list(df_consolidado.columns).index('*Nro. Id.')
-                    letra_col_dni = string.ascii_uppercase[idx_dni]
-                    rango_dni = f"{letra_col_dni}2:{letra_col_dni}5000"
-                    formula = f'=AND({letra_col_dni}2<>"", COUNTIF(${letra_col_dni}$2:${letra_col_dni}$5000,{letra_col_dni}2)>1)'
-                    
-                    formato_amarillo = workbook.add_format({'bg_color': '#FFF2CC', 'font_color': '#9C6500'})
-                    worksheet.conditional_format(rango_dni, {'type': 'formula', 'criteria': formula, 'format': formato_amarillo})
+                    for idx, item in enumerate(hojas_procesadas):
+                        # Limpiamos el nombre de la hoja para que Excel lo acepte (máx 31 caracteres)
+                        nombre_limpio = re.sub(r'[\[\]\:\*\?\/\\]', '', str(item['nombre_hoja']))[:31]
+                        
+                        # Si casualmente dos hojas quedan con el mismo nombre tras limpiarlo, evitamos error
+                        if nombre_limpio in writer.sheets:
+                            nombre_limpio = f"{idx+1}_{nombre_limpio}"[:31]
+                            
+                        item['df'].to_excel(writer, index=False, sheet_name=nombre_limpio)
+                        worksheet = writer.sheets[nombre_limpio]
+                        
+                        # Inyectamos listas desplegables hoja por hoja
+                        inyectar_listas_desplegables(writer, item['df'], workbook, nombre_limpio)
+                        
+                        # Inyectamos el formato condicional amarillo (para duplicados parciales DENTRO de la hoja)
+                        idx_dni = list(item['df'].columns).index('*Nro. Id.')
+                        letra_col_dni = string.ascii_uppercase[idx_dni]
+                        rango_dni = f"{letra_col_dni}2:{letra_col_dni}5000"
+                        formula = f'=AND({letra_col_dni}2<>"", COUNTIF(${letra_col_dni}$2:${letra_col_dni}$5000,{letra_col_dni}2)>1)'
+                        
+                        formato_amarillo = workbook.add_format({'bg_color': '#FFF2CC', 'font_color': '#9C6500'})
+                        worksheet.conditional_format(rango_dni, {'type': 'formula', 'criteria': formula, 'format': formato_amarillo})
                 
                 col_u1, col_u2 = st.columns([1, 1])
                 with col_u1:
                     st.download_button(
-                        label="📥 Descargar Plantilla Oficial Unificada",
-                        data=buffer_unif.getvalue(),
-                        file_name="VIDA_Personas_Unificado.xlsx",
+                        label="📥 Descargar Excel Multi-Hoja Procesado",
+                        data=buffer_multi.getvalue(),
+                        file_name="VIDA_Personas_MultiHoja.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
                 with col_u2:
-                    if st.button("🧹 Empezar de cero / Nueva Carga Múltiple", key="btn_unif", use_container_width=True):
+                    if st.button("🧹 Empezar de cero / Nueva Carga", key="btn_unif", use_container_width=True):
                         st.session_state.reset_unificador += 1
                         st.rerun()
 
