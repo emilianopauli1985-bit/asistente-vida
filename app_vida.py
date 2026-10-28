@@ -129,7 +129,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown('<h1 style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.6);">Asistente Operativo - Área vida</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="color: white; text-shadow: 2px 2px 5px rgba(0,0,0,0.6);">Asistente Operativo - Área Vida</h1>', unsafe_allow_html=True)
 st.markdown('<p style="color: white; font-size: 18px; text-shadow: 1px 1px 4px rgba(0,0,0,0.6); margin-bottom: 30px;">Seleccioná la herramienta que necesites usar hoy.</p>', unsafe_allow_html=True)
 
 tab_armador, tab_validador, tab_unificador, tab_pdf = st.tabs([
@@ -506,146 +506,167 @@ with tab_validador:
             st.error(f"Error al leer el archivo. Detalle técnico: {e}")
 
 # ==========================================
-# PESTAÑA 3: UNIFICADOR DE EXCELS
+# PESTAÑA 3: UNIFICADOR DE EXCELS Y HOJAS
 # ==========================================
 with tab_unificador:
-    st.markdown('<div style="background-color: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #262730 !important;">Subí varios archivos Excel a la vez (de distintas sucursales). Configurá cada uno por separado y unificálos en una sola Plantilla Oficial.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="background-color: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px; margin-bottom: 20px; color: #262730 !important;">Subí varios archivos Excel a la vez, <b>o un solo archivo que tenga varias hojas (pestañas)</b>. Vas a poder configurar cada hoja por separado y el sistema unificará todo en una sola Plantilla Oficial.</div>', unsafe_allow_html=True)
     
-    archivos_multiples = st.file_uploader("Subí todos los archivos que quieras fusionar", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key=f"uploader_unif_{st.session_state.reset_unificador}")
+    archivos_multiples = st.file_uploader("Subí los archivos que quieras fusionar", type=["xlsx", "xls", "csv"], accept_multiple_files=True, key=f"uploader_unif_{st.session_state.reset_unificador}")
     
     if archivos_multiples:
         configs = []
-        st.write("### ⚙️ Configuración de Archivos")
+        st.write("### ⚙️ Configuración de Archivos y Hojas")
         
-        for idx, archivo in enumerate(archivos_multiples):
-            with st.expander(f"📁 Configurar archivo {idx+1}: {archivo.name}", expanded=True):
+        idx_global = 0
+        for archivo in archivos_multiples:
+            es_excel = not archivo.name.endswith('.csv')
+            hojas = ["CSV"]
+            
+            if es_excel:
                 archivo.seek(0)
-                col_f_1, col_f_2 = st.columns([2, 3])
-                with col_f_1:
-                    fila_titulos = st.number_input(f"Fila de títulos en este archivo:", min_value=1, value=1, key=f"fila_unif_{idx}")
-                
                 try:
-                    filas_a_saltar = int(fila_titulos) - 1
-                    if archivo.name.endswith('.csv'):
-                        df_tmp = pd.read_csv(archivo, skiprows=filas_a_saltar, nrows=5)
-                    else:
-                        df_tmp = pd.read_excel(archivo, skiprows=filas_a_saltar, nrows=5)
+                    xls = pd.ExcelFile(archivo)
+                    hojas = xls.sheet_names
+                except:
+                    hojas = ["Hoja 1"]
+            
+            for hoja in hojas:
+                with st.expander(f"📁 {archivo.name} - Hoja: {hoja}", expanded=True):
+                    incluir_hoja = st.checkbox(f"Procesar y unir esta hoja", value=True, key=f"check_{idx_global}")
                     
-                    columnas_disponibles = ["No incluir"] + list(df_tmp.columns)
-                    
-                    formato_nombres = st.radio("¿Cómo vienen el Nombre y Apellido acá?", ["En una sola columna", "En columnas separadas"], horizontal=True, key=f"fmt_nom_unif_{idx}")
-                    
-                    if formato_nombres == "En una sola columna":
-                        c1, c2, c3, c4 = st.columns(4)
-                        with c1: col_dni = st.selectbox("DNI:", options=columnas_disponibles, key=f"dni1_{idx}")
-                        with c2: col_nombre_completo = st.selectbox("Nombre completo:", options=columnas_disponibles, key=f"nomc_{idx}")
-                        with c3: col_fecha = st.selectbox("Fecha Nac.:", options=columnas_disponibles, key=f"fec1_{idx}")
-                        with c4: col_id_persona = st.selectbox("ID (Opcional):", options=columnas_disponibles, key=f"id1_{idx}")
-                        col_apellido_sep, col_nombre_sep = "No incluir", "No incluir"
-                    else:
-                        c1, c2, c3, c4, c5 = st.columns(5)
-                        with c1: col_dni = st.selectbox("DNI:", options=columnas_disponibles, key=f"dni2_{idx}")
-                        with c2: col_apellido_sep = st.selectbox("Apellido:", options=columnas_disponibles, key=f"ape_{idx}")
-                        with c3: col_nombre_sep = st.selectbox("Nombre:", options=columnas_disponibles, key=f"nom_{idx}")
-                        with c4: col_fecha = st.selectbox("Fecha Nac.:", options=columnas_disponibles, key=f"fec2_{idx}")
-                        with c5: col_id_persona = st.selectbox("ID (Opcional):", options=columnas_disponibles, key=f"id2_{idx}")
-                        col_nombre_completo = "No incluir"
+                    if incluir_hoja:
+                        col_f_1, col_f_2 = st.columns([2, 3])
+                        with col_f_1:
+                            fila_titulos = st.number_input("Fila de títulos:", min_value=1, value=2, key=f"fila_unif_{idx_global}")
                         
-                    configs.append({
-                        'archivo': archivo, 'fila_titulos': fila_titulos, 'formato_nombres': formato_nombres,
-                        'col_dni': col_dni, 'col_nombre_completo': col_nombre_completo, 'col_apellido_sep': col_apellido_sep,
-                        'col_nombre_sep': col_nombre_sep, 'col_fecha': col_fecha, 'col_id_persona': col_id_persona
-                    })
-                except Exception as e:
-                    st.error(f"Error leyendo {archivo.name}. Verificá la fila de títulos. Detalle: {e}")
+                        try:
+                            filas_a_saltar = int(fila_titulos) - 1
+                            archivo.seek(0)
+                            
+                            if es_excel:
+                                df_tmp = pd.read_excel(archivo, sheet_name=hoja, skiprows=filas_a_saltar, nrows=5)
+                            else:
+                                df_tmp = pd.read_csv(archivo, skiprows=filas_a_saltar, nrows=5)
+                                
+                            columnas_disponibles = ["No incluir"] + list(df_tmp.columns)
+                            
+                            formato_nombres = st.radio("¿Cómo vienen el Nombre y Apellido acá?", ["En una sola columna", "En columnas separadas"], horizontal=True, key=f"fmt_nom_unif_{idx_global}")
+                            
+                            if formato_nombres == "En una sola columna":
+                                c1, c2, c3, c4 = st.columns(4)
+                                with c1: col_dni = st.selectbox("DNI:", options=columnas_disponibles, key=f"dni1_{idx_global}")
+                                with c2: col_nombre_completo = st.selectbox("Nombre completo:", options=columnas_disponibles, key=f"nomc_{idx_global}")
+                                with c3: col_fecha = st.selectbox("Fecha Nac.:", options=columnas_disponibles, key=f"fec1_{idx_global}")
+                                with c4: col_id_persona = st.selectbox("ID (Opcional):", options=columnas_disponibles, key=f"id1_{idx_global}")
+                                col_apellido_sep, col_nombre_sep = "No incluir", "No incluir"
+                            else:
+                                c1, c2, c3, c4, c5 = st.columns(5)
+                                with c1: col_dni = st.selectbox("DNI:", options=columnas_disponibles, key=f"dni2_{idx_global}")
+                                with c2: col_apellido_sep = st.selectbox("Apellido:", options=columnas_disponibles, key=f"ape_{idx_global}")
+                                with c3: col_nombre_sep = st.selectbox("Nombre:", options=columnas_disponibles, key=f"nom_{idx_global}")
+                                with c4: col_fecha = st.selectbox("Fecha Nac.:", options=columnas_disponibles, key=f"fec2_{idx_global}")
+                                with c5: col_id_persona = st.selectbox("ID (Opcional):", options=columnas_disponibles, key=f"id2_{idx_global}")
+                                col_nombre_completo = "No incluir"
+                                
+                            configs.append({
+                                'archivo': archivo, 'es_excel': es_excel, 'hoja': hoja, 'fila_titulos': fila_titulos, 
+                                'formato_nombres': formato_nombres, 'col_dni': col_dni, 'col_nombre_completo': col_nombre_completo, 
+                                'col_apellido_sep': col_apellido_sep, 'col_nombre_sep': col_nombre_sep, 'col_fecha': col_fecha, 'col_id_persona': col_id_persona
+                            })
+                        except Exception as e:
+                            st.warning(f"No se pudo leer la tabla en esta hoja. Detalle: {e}")
+                    
+                idx_global += 1
 
-        if len(configs) == len(archivos_multiples):
+        if configs:
             st.markdown("---")
-            if st.button("🔗 Consolidar Archivos y Generar Plantilla Oficial", use_container_width=True):
+            if st.button("🔗 Consolidar Hojas y Generar Plantilla Oficial", use_container_width=True):
                 lista_dfs_limpios = []
                 tiene_id = any(cfg['col_id_persona'] != "No incluir" for cfg in configs)
                 
-                for cfg in configs:
-                    cfg['archivo'].seek(0)
-                    filas_a_saltar = int(cfg['fila_titulos']) - 1
-                    if cfg['archivo'].name.endswith('.csv'):
-                        df_crudo = pd.read_csv(cfg['archivo'], skiprows=filas_a_saltar)
-                    else:
-                        df_crudo = pd.read_excel(cfg['archivo'], skiprows=filas_a_saltar)
-                    
-                    df_crudo = df_crudo.dropna(how='all')
-                    
-                    columnas_oficiales = ['Acción', '*Tipo Id.', '*Nro. Id.', '*Apellido', '*Nombre', '*Fecha de Nacimiento', 'Fecha de Ingreso', 'Sueldo', 'Suma asegurada', 'Nro. de grupo']
-                    if tiene_id:
-                        columnas_oficiales.insert(1, 'ID de Persona')
+                with st.spinner("Procesando y unificando datos..."):
+                    for cfg in configs:
+                        cfg['archivo'].seek(0)
+                        filas_a_saltar = int(cfg['fila_titulos']) - 1
                         
-                    df_oficial = pd.DataFrame(columns=columnas_oficiales)
-                    
-                    if tiene_id:
-                        if cfg['col_id_persona'] != "No incluir":
-                            df_oficial['ID de Persona'] = df_crudo[cfg['col_id_persona']].fillna("")
+                        if cfg['es_excel']:
+                            df_crudo = pd.read_excel(cfg['archivo'], sheet_name=cfg['hoja'], skiprows=filas_a_saltar)
                         else:
-                            df_oficial['ID de Persona'] = ""
+                            df_crudo = pd.read_csv(cfg['archivo'], skiprows=filas_a_saltar)
+                        
+                        df_crudo = df_crudo.dropna(how='all')
+                        
+                        columnas_oficiales = ['Acción', '*Tipo Id.', '*Nro. Id.', '*Apellido', '*Nombre', '*Fecha de Nacimiento', 'Fecha de Ingreso', 'Sueldo', 'Suma asegurada', 'Nro. de grupo']
+                        if tiene_id:
+                            columnas_oficiales.insert(1, 'ID de Persona')
                             
-                    if cfg['col_dni'] != "No incluir":
-                        df_oficial['*Nro. Id.'] = df_crudo[cfg['col_dni']].apply(procesar_dni_cuil)
-                    
-                    apellidos, nombres = [], []
-                    if cfg['formato_nombres'] == "En una sola columna":
-                        if cfg['col_nombre_completo'] != "No incluir":
-                            for nombre_completo in df_crudo[cfg['col_nombre_completo']]:
-                                texto = str(nombre_completo).strip()
-                                if texto.lower() == 'nan' or pd.isna(nombre_completo) or not texto:
-                                    apellidos.append(""); nombres.append("")
-                                elif "," in texto:
-                                    partes = texto.split(",", 1)
-                                    apellidos.append(partes[0].strip().upper())
-                                    nombres.append(partes[1].strip().upper())
-                                else:
-                                    partes = texto.split(" ", 1)
-                                    if len(partes) > 1:
+                        df_oficial = pd.DataFrame(columns=columnas_oficiales)
+                        
+                        if tiene_id:
+                            if cfg['col_id_persona'] != "No incluir":
+                                df_oficial['ID de Persona'] = df_crudo[cfg['col_id_persona']].fillna("")
+                            else:
+                                df_oficial['ID de Persona'] = ""
+                                
+                        if cfg['col_dni'] != "No incluir":
+                            df_oficial['*Nro. Id.'] = df_crudo[cfg['col_dni']].apply(procesar_dni_cuil)
+                        
+                        apellidos, nombres = [], []
+                        if cfg['formato_nombres'] == "En una sola columna":
+                            if cfg['col_nombre_completo'] != "No incluir":
+                                for nombre_completo in df_crudo[cfg['col_nombre_completo']]:
+                                    texto = str(nombre_completo).strip()
+                                    if texto.lower() == 'nan' or pd.isna(nombre_completo) or not texto:
+                                        apellidos.append(""); nombres.append("")
+                                    elif "," in texto:
+                                        partes = texto.split(",", 1)
                                         apellidos.append(partes[0].strip().upper())
                                         nombres.append(partes[1].strip().upper())
                                     else:
-                                        apellidos.append(texto.upper()); nombres.append("")
-                        else:
-                            apellidos = [""] * len(df_crudo); nombres = [""] * len(df_crudo)
-                    else:
-                        if cfg['col_apellido_sep'] != "No incluir":
-                            apellidos = [str(x).strip().upper() if pd.notna(x) and str(x).lower() != 'nan' else "" for x in df_crudo[cfg['col_apellido_sep']]]
-                        else:
-                            apellidos = [""] * len(df_crudo)
-                            
-                        if cfg['col_nombre_sep'] != "No incluir":
-                            nombres = [str(x).strip().upper() if pd.notna(x) and str(x).lower() != 'nan' else "" for x in df_crudo[cfg['col_nombre_sep']]]
-                        else:
-                            nombres = [""] * len(df_crudo)
-
-                    df_oficial['*Apellido'] = apellidos
-                    df_oficial['*Nombre'] = nombres
-                    
-                    if cfg['col_fecha'] != "No incluir":
-                        fechas_limpias = []
-                        for f in df_crudo[cfg['col_fecha']]:
-                            if pd.isna(f) or str(f).lower() == 'nan':
-                                fechas_limpias.append("")
-                            elif isinstance(f, (pd.Timestamp, datetime)):
-                                fechas_limpias.append(f.date())
+                                        partes = texto.split(" ", 1)
+                                        if len(partes) > 1:
+                                            apellidos.append(partes[0].strip().upper())
+                                            nombres.append(partes[1].strip().upper())
+                                        else:
+                                            apellidos.append(texto.upper()); nombres.append("")
                             else:
-                                f_str = str(f)
-                                nums = re.sub(r'[^0-9]', '', f_str)
-                                if len(nums) == 8:
-                                    try: fechas_limpias.append(pd.to_datetime(nums, format='%d%m%Y').date())
-                                    except: fechas_limpias.append(f_str)
-                                else:
-                                    fechas_limpias.append(f_str)
-                        df_oficial['*Fecha de Nacimiento'] = fechas_limpias
+                                apellidos = [""] * len(df_crudo); nombres = [""] * len(df_crudo)
+                        else:
+                            if cfg['col_apellido_sep'] != "No incluir":
+                                apellidos = [str(x).strip().upper() if pd.notna(x) and str(x).lower() != 'nan' else "" for x in df_crudo[cfg['col_apellido_sep']]]
+                            else:
+                                apellidos = [""] * len(df_crudo)
+                                
+                            if cfg['col_nombre_sep'] != "No incluir":
+                                nombres = [str(x).strip().upper() if pd.notna(x) and str(x).lower() != 'nan' else "" for x in df_crudo[cfg['col_nombre_sep']]]
+                            else:
+                                nombres = [""] * len(df_crudo)
 
-                    df_oficial['Acción'] = 'Agregar'
-                    df_oficial['*Tipo Id.'] = 'D.N.I.'
-                    df_oficial['Nro. de grupo'] = '1-Titular'
-                    
-                    lista_dfs_limpios.append(df_oficial)
+                        df_oficial['*Apellido'] = apellidos
+                        df_oficial['*Nombre'] = nombres
+                        
+                        if cfg['col_fecha'] != "No incluir":
+                            fechas_limpias = []
+                            for f in df_crudo[cfg['col_fecha']]:
+                                if pd.isna(f) or str(f).lower() == 'nan':
+                                    fechas_limpias.append("")
+                                elif isinstance(f, (pd.Timestamp, datetime)):
+                                    fechas_limpias.append(f.date())
+                                else:
+                                    f_str = str(f)
+                                    nums = re.sub(r'[^0-9]', '', f_str)
+                                    if len(nums) == 8:
+                                        try: fechas_limpias.append(pd.to_datetime(nums, format='%d%m%Y').date())
+                                        except: fechas_limpias.append(f_str)
+                                    else:
+                                        fechas_limpias.append(f_str)
+                            df_oficial['*Fecha de Nacimiento'] = fechas_limpias
+
+                        df_oficial['Acción'] = 'Agregar'
+                        df_oficial['*Tipo Id.'] = 'D.N.I.'
+                        df_oficial['Nro. de grupo'] = '1-Titular'
+                        
+                        lista_dfs_limpios.append(df_oficial)
                 
                 df_consolidado = pd.concat(lista_dfs_limpios, ignore_index=True)
                 
@@ -657,15 +678,15 @@ with tab_unificador:
                     m_duplicados = df_consolidado.duplicated(subset=['*Nro. Id.', '*Apellido', '*Nombre'], keep='first')
                     df_consolidado = df_consolidado[m_vacios | (~m_duplicados)]
                     df_consolidado.reset_index(drop=True, inplace=True)
-                    st.success(f"🪄 **Limpieza Automática Global:** Se eliminaron {cantidad_duplicados} registros idénticos encontrados entre las distintas listas.")
+                    st.success(f"🪄 **Limpieza Automática Global:** Se eliminaron {cantidad_duplicados} registros idénticos encontrados entre las distintas hojas.")
                 else:
-                    st.success("✅ Archivos fusionados exitosamente.")
+                    st.success("✅ Hojas fusionadas exitosamente.")
                     
                 dnis_con_datos_final = df_consolidado[df_consolidado['*Nro. Id.'] != '']
                 cant_dup_parciales = dnis_con_datos_final.duplicated(subset=['*Nro. Id.'], keep=False).sum()
 
                 if cant_dup_parciales > 0:
-                    st.warning(f"⚠️ **¡Alerta de revisión!** Quedaron {cant_dup_parciales} registros con el mismo DNI pero distintos nombres entre los archivos. Se pintaron de amarillo para que los analices.")
+                    st.warning(f"⚠️ **¡Alerta de revisión!** Quedaron {cant_dup_parciales} registros con el mismo DNI pero distintos nombres entre las hojas. Se pintaron de amarillo para que los analices.")
                 
                 st.markdown('<div style="background-color: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px; color: #262730 !important;">', unsafe_allow_html=True)
                 st.write("**Vista Previa del Archivo Unificado:**")
